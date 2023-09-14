@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func getOddsJamWebSocketUrl(hostport string) (string, error) {
+func getWebSocketUrl(hostport, website string) (string, error) {
 	res, err := http.Get(fmt.Sprintf("%v/json", hostport))
 	if err != nil {
 		return "", fmt.Errorf("unable to connect to cdp, are you running in debug mode?: %w", err)
@@ -34,7 +34,7 @@ func getOddsJamWebSocketUrl(hostport string) (string, error) {
 		info := resource.(map[string]interface{})
 		rtype := info["type"].(string)
 		url := info["url"].(string)
-		if rtype == "page" && strings.Contains(url, "oddsjam.com") {
+		if rtype == "page" && strings.Contains(url, website) {
 			// Take the first one and ignore the rest if any.
 			return info["webSocketDebuggerUrl"].(string), nil
 		}
@@ -43,8 +43,8 @@ func getOddsJamWebSocketUrl(hostport string) (string, error) {
 	return "", errors.New("unable to find OddsJam tab")
 }
 
-func GetOddsJamCookies(hostport string) (string, error) {
-	wsUrl, err := getOddsJamWebSocketUrl(hostport)
+func GetCookies(hostport, website string) (string, error) {
+	wsUrl, err := getWebSocketUrl(hostport, website)
 	if err != nil {
 		return "", err
 	}
