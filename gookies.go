@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+// getWebSocketUrl returns the websocket URL for the given website as loaded
+// from chrome running in debug mode at the given hostport.
 func getWebSocketUrl(hostport, website string) (string, error) {
 	res, err := http.Get(fmt.Sprintf("%v/json", hostport))
 	if err != nil {
@@ -43,6 +45,8 @@ func getWebSocketUrl(hostport, website string) (string, error) {
 	return "", errors.New("unable to find OddsJam tab")
 }
 
+// GetCookies returns the cookies for the given website by pulling them from
+// chrome running in debug mode at the given hostport.
 func GetCookies(hostport, website string) (string, error) {
 	wsUrl, err := getWebSocketUrl(hostport, website)
 	if err != nil {
