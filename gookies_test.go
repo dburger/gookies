@@ -1,8 +1,9 @@
 package gookies
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // These tests require chrome to be running in debug mode on the port as shown below.

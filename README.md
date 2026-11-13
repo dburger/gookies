@@ -1,3 +1,31 @@
 # gookies
 
-A golang library for reading cookies from chrome using chromedp.
+A golang library for reading cookies out of a running Chrome through the Chrome DevTools
+Protocol.
+
+```go
+cookies, err := gookies.GetCookies("http://127.0.0.1:9222", "example.com")
+// cookies is "name=value; name=value", ready for a Cookie header
+```
+
+It returns the cookies whose domain is the website, a subdomain of it or a parent domain of it.
+No tab for the site needs to be open.
+
+## Putting Chrome in debug mode
+
+Either of these works:
+
+- **Your running Chrome (144 and later):** open `chrome://inspect/#remote-debugging` and turn
+  remote debugging on. Chrome writes the port and websocket path to `DevToolsActivePort` in your
+  profile directory, which gookies reads, and asks you to allow each connection.
+- **A separate profile:** since Chrome 136 `--remote-debugging-port` is ignored on the default
+  profile, so give it a profile of its own and sign in there once:
+
+  ```bash
+  google-chrome-stable --remote-debugging-port=9222 --user-data-dir="$HOME/.config/chrome-debug"
+  ```
+
+## Tests
+
+`make test` runs everything; `TestGetCookies_Works` needs Chrome in debug mode on port 9222
+with google.com cookies (and you to allow the connection).

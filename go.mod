@@ -3,8 +3,8 @@ module github.com/dburger/gookies
 go 1.24.3
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/stretchr/testify v1.8.4
-	nhooyr.io/websocket v1.8.17
 )
 
 require (
