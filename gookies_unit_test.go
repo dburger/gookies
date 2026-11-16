@@ -14,7 +14,7 @@ func TestDomainMatches(t *testing.T) {
 		want            bool
 	}{
 		{"example.com", "example.com", true},
-		{".example.com", "example.com", true},   // parent-domain cookie
+		{".example.com", "example.com", true},    // parent-domain cookie
 		{"app.example.com", "example.com", true}, // subdomain cookie
 		{".example.com", "app.example.com", true},
 		{"Example.com", "example.com", true},

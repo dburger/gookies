@@ -36,22 +36,37 @@ const timeout = time.Minute
 // relative to the user config directory.
 var profileDirs = []string{"google-chrome", "google-chrome-beta", "google-chrome-unstable", "chromium"}
 
+// Session is what a request needs to look like it came from your Chrome.
+type Session struct {
+	// Cookies is "name=value; name=value", ready for a Cookie header.
+	Cookies string
+	// UserAgent is the User-Agent header Chrome sends.
+	UserAgent string
+}
+
 // GetCookies returns the cookies for website, as "name=value; name=value",
 // from Chrome debugging at hostport (for example "http://127.0.0.1:9222").
 // A cookie belongs to website when its domain is website, a subdomain of it,
 // or a parent domain of it.
 func GetCookies(hostport, website string) (string, error) {
+	session, err := GetSession(hostport, website)
+	return session.Cookies, err
+}
+
+// GetSession returns the cookies for website, as GetCookies does, and
+// Chrome's User-Agent, over a single connection (one prompt to allow it).
+func GetSession(hostport, website string) (Session, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	wsURL, err := browserWebSocketURL(ctx, hostport)
 	if err != nil {
-		return "", err
+		return Session{}, err
 	}
 
-	cookies, err := allCookies(ctx, wsURL)
+	cookies, userAgent, err := fetch(ctx, wsURL)
 	if err != nil {
-		return "", err
+		return Session{}, err
 	}
 
 	var pairs []string
@@ -61,9 +76,9 @@ func GetCookies(hostport, website string) (string, error) {
 		}
 	}
 	if len(pairs) == 0 {
-		return "", fmt.Errorf("no cookies for %v in chrome", website)
+		return Session{}, fmt.Errorf("no cookies for %v in chrome", website)
 	}
-	return strings.Join(pairs, "; "), nil
+	return Session{Cookies: strings.Join(pairs, "; "), UserAgent: userAgent}, nil
 }
 
 // browserWebSocketURL finds the browser websocket of Chrome debugging at
@@ -145,44 +160,62 @@ type cookie struct {
 	Domain string `json:"domain"`
 }
 
-// allCookies returns every cookie in the browser, through Storage.getCookies
-// on the browser websocket.
-func allCookies(ctx context.Context, wsURL string) ([]cookie, error) {
+// fetch returns every cookie in the browser (Storage.getCookies) and its
+// User-Agent (Browser.getVersion), over one connection to the browser
+// websocket.
+func fetch(ctx context.Context, wsURL string) ([]cookie, string, error) {
 	conn, _, err := websocket.Dial(ctx, wsURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("unable to connect to chrome at %v (did you allow it?): %w", wsURL, err)
+		return nil, "", fmt.Errorf("unable to connect to chrome at %v (did you allow it?): %w", wsURL, err)
 	}
 	defer conn.CloseNow()
 	// Cookie lists can be large.
 	conn.SetReadLimit(64 << 20)
 
-	const id = 1
-	if err := wsjson.Write(ctx, conn, map[string]any{"id": id, "method": "Storage.getCookies"}); err != nil {
-		return nil, fmt.Errorf("unable to request cookies: %w", err)
+	var cookies struct {
+		Cookies []cookie `json:"cookies"`
+	}
+	if err := call(ctx, conn, 1, "Storage.getCookies", &cookies); err != nil {
+		return nil, "", err
+	}
+	var version struct {
+		UserAgent string `json:"userAgent"`
+	}
+	if err := call(ctx, conn, 2, "Browser.getVersion", &version); err != nil {
+		return nil, "", err
 	}
 
-	// Skip anything that is not the reply, such as events.
+	conn.Close(websocket.StatusNormalClosure, "")
+	return cookies.Cookies, version.UserAgent, nil
+}
+
+// call sends the CDP command method with id and decodes its reply's result
+// into result, skipping anything else that arrives first, such as events.
+func call(ctx context.Context, conn *websocket.Conn, id int, method string, result any) error {
+	if err := wsjson.Write(ctx, conn, map[string]any{"id": id, "method": method}); err != nil {
+		return fmt.Errorf("%v: %w", method, err)
+	}
 	for {
 		var reply struct {
-			ID     int `json:"id"`
-			Result struct {
-				Cookies []cookie `json:"cookies"`
-			} `json:"result"`
-			Error *struct {
+			ID     int             `json:"id"`
+			Result json.RawMessage `json:"result"`
+			Error  *struct {
 				Message string `json:"message"`
 			} `json:"error"`
 		}
 		if err := wsjson.Read(ctx, conn, &reply); err != nil {
-			return nil, fmt.Errorf("unable to read cookies: %w", err)
+			return fmt.Errorf("%v: %w", method, err)
 		}
 		if reply.ID != id {
 			continue
 		}
 		if reply.Error != nil {
-			return nil, fmt.Errorf("Storage.getCookies: %v", reply.Error.Message)
+			return fmt.Errorf("%v: %v", method, reply.Error.Message)
 		}
-		conn.Close(websocket.StatusNormalClosure, "")
-		return reply.Result.Cookies, nil
+		if err := json.Unmarshal(reply.Result, result); err != nil {
+			return fmt.Errorf("%v: %w", method, err)
+		}
+		return nil
 	}
 }
 
