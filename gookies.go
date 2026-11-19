@@ -1,5 +1,5 @@
-// Package gookies reads cookies out of a running Chrome through the Chrome
-// DevTools Protocol (CDP).
+// Package gookies reads cookies and the user-agent out of a running Chrome through
+// the Chrome DevTools Protocol (CDP).
 //
 // Chrome can expose CDP in two ways, and both work:
 //
@@ -28,7 +28,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-// timeout bounds a whole GetCookies call, including the time you take to
+// timeout bounds a whole GetSession call, including the time you take to
 // allow the connection when Chrome asks.
 const timeout = time.Minute
 
@@ -44,17 +44,8 @@ type Session struct {
 	UserAgent string
 }
 
-// GetCookies returns the cookies for website, as "name=value; name=value",
-// from Chrome debugging at hostport (for example "http://127.0.0.1:9222").
-// A cookie belongs to website when its domain is website, a subdomain of it,
-// or a parent domain of it.
-func GetCookies(hostport, website string) (string, error) {
-	session, err := GetSession(hostport, website)
-	return session.Cookies, err
-}
-
-// GetSession returns the cookies for website, as GetCookies does, and
-// Chrome's User-Agent, over a single connection (one prompt to allow it).
+// GetSession returns the cookies for website and Chrome's User-Agent,
+// over a single connection (one prompt to allow it).
 func GetSession(hostport, website string) (Session, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

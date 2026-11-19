@@ -12,22 +12,25 @@ const invalidHostport = "http://127.0.0.1:1222"
 const website = "google.com"
 const invalidWebsite = "xgrooglex.com"
 
-func TestGetCookies_Works(t *testing.T) {
-	if cookies, err := GetCookies(hostport, website); err != nil {
+func TestGetSession_Works(t *testing.T) {
+	if session, err := GetSession(hostport, website); err != nil {
 		assert.Nil(t, err, "Is you browser running in debug mode @ %v with a \"%v\" tab open?", hostport, website)
 	} else {
-		assert.Greater(t, len(cookies), 0)
+		assert.Greater(t, len(session.Cookies), 0)
+		assert.Greater(t, len(session.UserAgent), 0)
 	}
 }
 
-func TestGetCookies_FailsNoChrome(t *testing.T) {
-	cookies, err := GetCookies(invalidHostport, website)
+func TestGetSession_FailsNoChrome(t *testing.T) {
+	session, err := GetSession(invalidHostport, website)
 	assert.NotNil(t, err)
-	assert.Emptyf(t, cookies, "Expected cookies to be empty when an error is returned.")
+	assert.Emptyf(t, session.Cookies, "Expected cookies to be empty when an error is returned.")
+	assert.Empty(t, session.UserAgent, "Expected user agent to be empty when an error is returned.")
 }
 
-func TestGetCookies_FailsNoWebsite(t *testing.T) {
-	cookies, err := GetCookies(hostport, invalidWebsite)
+func TestGetSession_FailsNoWebsite(t *testing.T) {
+	session, err := GetSession(hostport, invalidWebsite)
 	assert.NotNil(t, err)
-	assert.Emptyf(t, cookies, "Expected cookies to be empty when an error is returned.")
+	assert.Emptyf(t, session.Cookies, "Expected cookies to be empty when an error is returned.")
+	assert.Empty(t, session.UserAgent, "Expected user agent to be empty when an error is returned.")
 }
