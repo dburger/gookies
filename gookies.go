@@ -9,6 +9,21 @@
 //     a running Chrome (144 and later). Chrome then serves only the browser
 //     websocket, whose path it writes to DevToolsActivePort in the profile
 //     directory, and asks you to allow each connection.
+//
+// Example usage:
+//
+//	session, err := gookies.GetSession(*chrome, *site)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//
+//	req, err := http.NewRequest(http.MethodGet, *url, nil)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	req.Header.Set("Cookie", session.Cookies)
+//	req.Header.Set("User-Agent", session.UserAgent)
+//	res, err := http.DefaultClient.Do(req)
 package gookies
 
 import (
