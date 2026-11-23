@@ -100,6 +100,23 @@ func TestActivePortPaths(t *testing.T) {
 	assert.Empty(t, paths, "a different port must not match")
 }
 
+func TestChromeProfileDirs(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/tmp/cfg")
+	t.Setenv("LOCALAPPDATA", `C:\Users\me\AppData\Local`)
+
+	linuxDirs := chromeProfileDirs("linux")
+	assert.Contains(t, linuxDirs, filepath.Join("/tmp/cfg", "google-chrome"))
+	assert.Contains(t, linuxDirs, filepath.Join("/tmp/cfg", "chromium"))
+
+	darwinDirs := chromeProfileDirs("darwin")
+	assert.Contains(t, darwinDirs, filepath.Join("/tmp/cfg", "Google", "Chrome"))
+	assert.Contains(t, darwinDirs, filepath.Join("/tmp/cfg", "Chromium"))
+
+	winDirs := chromeProfileDirs("windows")
+	assert.Contains(t, winDirs, filepath.Join(`C:\Users\me\AppData\Local`, "Google", "Chrome", "User Data"))
+	assert.Contains(t, winDirs, filepath.Join(`C:\Users\me\AppData\Local`, "Chromium", "User Data"))
+}
+
 func TestBrowserWebSocketURLs_BadHostport(t *testing.T) {
 	_, err := browserWebSocketURLs(t.Context(), "127.0.0.1:9222")
 	assert.Error(t, err)

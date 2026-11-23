@@ -37,6 +37,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -44,10 +45,6 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
-
-// profileDirs are the profile directories searched for DevToolsActivePort,
-// relative to the user config directory.
-var profileDirs = []string{"google-chrome", "google-chrome-beta", "google-chrome-unstable", "chromium"}
 
 // Session is what a request needs to look like it came from your Chrome.
 type Session struct {
@@ -196,13 +193,9 @@ func fromVersion(ctx context.Context, hostport string) (string, error) {
 // activePortPaths returns the browser websocket paths from all
 // DevToolsActivePort files whose port is port.
 func activePortPaths(port string) []string {
-	config, err := os.UserConfigDir()
-	if err != nil {
-		return nil
-	}
 	var paths []string
-	for _, dir := range profileDirs {
-		f, err := os.Open(filepath.Join(config, dir, "DevToolsActivePort"))
+	for _, dir := range chromeProfileDirs(runtime.GOOS) {
+		f, err := os.Open(filepath.Join(dir, "DevToolsActivePort"))
 		if err != nil {
 			continue
 		}
@@ -219,6 +212,52 @@ func activePortPaths(port string) []string {
 		}
 	}
 	return paths
+}
+
+func chromeProfileDirs(goos string) []string {
+	switch goos {
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" {
+			if home, err := os.UserHomeDir(); err == nil {
+				localAppData = filepath.Join(home, "AppData", "Local")
+			}
+		}
+		if localAppData == "" {
+			return nil
+		}
+		return joinAll(localAppData,
+			filepath.Join("Google", "Chrome", "User Data"),
+			filepath.Join("Google", "Chrome Beta", "User Data"),
+			filepath.Join("Google", "Chrome SxS", "User Data"),
+			filepath.Join("Chromium", "User Data"),
+		)
+	case "darwin":
+		config, err := os.UserConfigDir()
+		if err != nil {
+			return nil
+		}
+		return joinAll(config,
+			filepath.Join("Google", "Chrome"),
+			filepath.Join("Google", "Chrome Beta"),
+			filepath.Join("Google", "Chrome Canary"),
+			"Chromium",
+		)
+	default:
+		config, err := os.UserConfigDir()
+		if err != nil {
+			return nil
+		}
+		return joinAll(config, "google-chrome", "google-chrome-beta", "google-chrome-unstable", "chromium")
+	}
+}
+
+func joinAll(base string, subdirs ...string) []string {
+	dirs := make([]string, len(subdirs))
+	for i, sub := range subdirs {
+		dirs[i] = filepath.Join(base, sub)
+	}
+	return dirs
 }
 
 type cookie struct {
