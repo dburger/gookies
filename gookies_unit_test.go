@@ -81,24 +81,27 @@ func TestCookieMatches(t *testing.T) {
 	assert.True(t, cookieMatches(valid, "app.example.com", "/api", true, now))
 }
 
-func TestActivePortPath(t *testing.T) {
+func TestActivePortPaths(t *testing.T) {
 	config := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", config)
-	dir := filepath.Join(config, "google-chrome")
-	assert.NoError(t, os.MkdirAll(dir, 0o755))
-	assert.NoError(t, os.WriteFile(filepath.Join(dir, "DevToolsActivePort"),
+	chromeDir := filepath.Join(config, "google-chrome")
+	require.NoError(t, os.MkdirAll(chromeDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(chromeDir, "DevToolsActivePort"),
 		[]byte("9222\n/devtools/browser/c3059a2e\n"), 0o644))
+	chromiumDir := filepath.Join(config, "chromium")
+	require.NoError(t, os.MkdirAll(chromiumDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(chromiumDir, "DevToolsActivePort"),
+		[]byte("9222\n/devtools/browser/deadbeef\n"), 0o644))
 
-	path, ok := activePortPath("9222")
-	assert.True(t, ok)
-	assert.Equal(t, "/devtools/browser/c3059a2e", path)
+	paths := activePortPaths("9222")
+	assert.Equal(t, []string{"/devtools/browser/c3059a2e", "/devtools/browser/deadbeef"}, paths)
 
-	_, ok = activePortPath("9333")
-	assert.False(t, ok, "a different port must not match")
+	paths = activePortPaths("9333")
+	assert.Empty(t, paths, "a different port must not match")
 }
 
-func TestBrowserWebSocketURL_BadHostport(t *testing.T) {
-	_, err := browserWebSocketURL(t.Context(), "127.0.0.1:9222")
+func TestBrowserWebSocketURLs_BadHostport(t *testing.T) {
+	_, err := browserWebSocketURLs(t.Context(), "127.0.0.1:9222")
 	assert.Error(t, err)
 }
 
@@ -129,12 +132,12 @@ func TestBrowserWebSocketURL_RemoteSkipsActivePort(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
-	_, err := browserWebSocketURL(ctx, "http://192.0.2.1:9222")
+	_, err := browserWebSocketURLs(ctx, "http://192.0.2.1:9222")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no chrome debugging at")
 }
 
-func TestBrowserWebSocketURL_FallbackWSS(t *testing.T) {
+func TestBrowserWebSocketURLs_FallbackWSS(t *testing.T) {
 	config := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", config)
 	dir := filepath.Join(config, "google-chrome")
@@ -142,15 +145,15 @@ func TestBrowserWebSocketURL_FallbackWSS(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "DevToolsActivePort"),
 		[]byte("1222\n/devtools/browser/wss-id\n"), 0o644))
 
-	wsURL, err := browserWebSocketURL(t.Context(), "https://127.0.0.1:1222")
+	wsURLs, err := browserWebSocketURLs(t.Context(), "https://127.0.0.1:1222")
 	require.NoError(t, err)
-	assert.Equal(t, "wss://127.0.0.1:1222/devtools/browser/wss-id", wsURL)
+	assert.Equal(t, []string{"wss://127.0.0.1:1222/devtools/browser/wss-id"}, wsURLs)
 }
 
-func TestBrowserWebSocketURL_PreservesFromVersionError(t *testing.T) {
+func TestBrowserWebSocketURLs_PreservesFromVersionError(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err := browserWebSocketURL(ctx, "http://127.0.0.1:1222")
+	_, err := browserWebSocketURLs(ctx, "http://127.0.0.1:1222")
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -237,9 +240,65 @@ func TestBrowserWebSocketURL_FallbackActivePort(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "DevToolsActivePort"),
 		[]byte(u.Port()+"\n/devtools/browser/fallback-id\n"), 0o644))
 
-	wsURL, err := browserWebSocketURL(t.Context(), srv.URL)
+	wsURLs, err := browserWebSocketURLs(t.Context(), srv.URL)
 	require.NoError(t, err)
-	assert.Equal(t, "ws://"+u.Host+"/devtools/browser/fallback-id", wsURL)
+	assert.Equal(t, []string{"ws://" + u.Host + "/devtools/browser/fallback-id"}, wsURLs)
+}
+
+func TestGetSession_SkipsStaleActivePort(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/devtools/browser/live" {
+			http.NotFound(w, r)
+			return
+		}
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+
+		for {
+			var req struct {
+				ID     int    `json:"id"`
+				Method string `json:"method"`
+			}
+			if err := wsjson.Read(r.Context(), conn, &req); err != nil {
+				return
+			}
+			switch req.Method {
+			case "Storage.getCookies":
+				_ = wsjson.Write(r.Context(), conn, map[string]any{
+					"id":     req.ID,
+					"result": map[string]any{"cookies": []map[string]any{{"name": "ok", "value": "1", "domain": "example.com", "path": "/", "expires": -1}}},
+				})
+			case "Browser.getVersion":
+				_ = wsjson.Write(r.Context(), conn, map[string]any{
+					"id":     req.ID,
+					"result": map[string]any{"userAgent": "LiveChrome/1.0"},
+				})
+			}
+		}
+	}))
+	defer srv.Close()
+
+	u, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+
+	config := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", config)
+	chromeDir := filepath.Join(config, "google-chrome")
+	require.NoError(t, os.MkdirAll(chromeDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(chromeDir, "DevToolsActivePort"),
+		[]byte(u.Port()+"\n/devtools/browser/stale\n"), 0o644))
+	chromiumDir := filepath.Join(config, "chromium")
+	require.NoError(t, os.MkdirAll(chromiumDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(chromiumDir, "DevToolsActivePort"),
+		[]byte(u.Port()+"\n/devtools/browser/live\n"), 0o644))
+
+	session, err := GetSession(t.Context(), srv.URL, "https://example.com/")
+	require.NoError(t, err)
+	assert.Equal(t, "ok=1", session.Cookies)
+	assert.Equal(t, "LiveChrome/1.0", session.UserAgent)
 }
 
 func TestCall(t *testing.T) {

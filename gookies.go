@@ -69,12 +69,19 @@ func GetSession(ctx context.Context, hostport, rawURL string) (Session, error) {
 		reqPath = "/"
 	}
 
-	wsURL, err := browserWebSocketURL(ctx, hostport)
+	wsURLs, err := browserWebSocketURLs(ctx, hostport)
 	if err != nil {
 		return Session{}, err
 	}
 
-	cookies, userAgent, err := fetch(ctx, wsURL)
+	var cookies []cookie
+	var userAgent string
+	for _, wsURL := range wsURLs {
+		cookies, userAgent, err = fetch(ctx, wsURL)
+		if err == nil || ctx.Err() != nil {
+			break
+		}
+	}
 	if err != nil {
 		return Session{}, err
 	}
@@ -119,31 +126,35 @@ func GetSession(ctx context.Context, hostport, rawURL string) (Session, error) {
 	return Session{Cookies: strings.Join(pairs, "; "), UserAgent: userAgent}, nil
 }
 
-// browserWebSocketURL finds the browser websocket of Chrome debugging at
-// hostport: from /json/version when Chrome serves it, otherwise from a
+// browserWebSocketURLs finds candidate browser websockets of Chrome debugging at
+// hostport: from /json/version when Chrome serves it, otherwise from any
 // DevToolsActivePort file whose port matches.
-func browserWebSocketURL(ctx context.Context, hostport string) (string, error) {
+func browserWebSocketURLs(ctx context.Context, hostport string) ([]string, error) {
 	u, err := url.Parse(hostport)
 	if err != nil || u.Host == "" {
-		return "", fmt.Errorf("bad hostport %q, want e.g. http://127.0.0.1:9222", hostport)
+		return nil, fmt.Errorf("bad hostport %q, want e.g. http://127.0.0.1:9222", hostport)
 	}
 
 	wsURL, versionErr := fromVersion(ctx, hostport)
 	if versionErr == nil {
-		return wsURL, nil
+		return []string{wsURL}, nil
 	}
 
 	if isLoopbackHost(u.Hostname()) {
-		if path, ok := activePortPath(u.Port()); ok {
+		if paths := activePortPaths(u.Port()); len(paths) > 0 {
 			wsScheme := "ws"
 			if u.Scheme == "https" {
 				wsScheme = "wss"
 			}
-			return wsScheme + "://" + u.Host + path, nil
+			urls := make([]string, len(paths))
+			for i, path := range paths {
+				urls[i] = wsScheme + "://" + u.Host + path
+			}
+			return urls, nil
 		}
 	}
 
-	return "", fmt.Errorf("no chrome debugging at %v (%w): start chrome with --remote-debugging-port and "+
+	return nil, fmt.Errorf("no chrome debugging at %v (%w): start chrome with --remote-debugging-port and "+
 		"--user-data-dir, or turn it on at chrome://inspect/#remote-debugging", hostport, versionErr)
 }
 
@@ -182,13 +193,14 @@ func fromVersion(ctx context.Context, hostport string) (string, error) {
 	return version.WebSocketDebuggerURL, nil
 }
 
-// activePortPath returns the browser websocket path from the first
-// DevToolsActivePort file whose port is port.
-func activePortPath(port string) (string, bool) {
+// activePortPaths returns the browser websocket paths from all
+// DevToolsActivePort files whose port is port.
+func activePortPaths(port string) []string {
 	config, err := os.UserConfigDir()
 	if err != nil {
-		return "", false
+		return nil
 	}
+	var paths []string
 	for _, dir := range profileDirs {
 		f, err := os.Open(filepath.Join(config, dir, "DevToolsActivePort"))
 		if err != nil {
@@ -201,10 +213,12 @@ func activePortPath(port string) (string, bool) {
 		}
 		f.Close()
 		if len(lines) == 2 && lines[0] == port && strings.HasPrefix(lines[1], "/devtools/browser/") {
-			return lines[1], true
+			if !slices.Contains(paths, lines[1]) {
+				paths = append(paths, lines[1])
+			}
 		}
 	}
-	return "", false
+	return paths
 }
 
 type cookie struct {
