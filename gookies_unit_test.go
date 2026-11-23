@@ -58,7 +58,7 @@ func TestBrowserWebSocketURL_BadHostport(t *testing.T) {
 
 func TestGetSession_FailsNoChrome(t *testing.T) {
 	session, err := GetSession(t.Context(), "http://127.0.0.1:1222", "google.com")
-	assert.NotNil(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no chrome debugging at")
 	assert.Emptyf(t, session.Cookies, "Expected cookies to be empty when an error is returned.")
 	assert.Empty(t, session.UserAgent, "Expected user agent to be empty when an error is returned.")
