@@ -54,9 +54,9 @@ type Session struct {
 	UserAgent string
 }
 
-// GetSession returns the cookies for website and Chrome's User-Agent,
+// GetSession returns the cookies for domain and Chrome's User-Agent,
 // over a single connection (one prompt to allow it).
-func GetSession(ctx context.Context, hostport, website string) (Session, error) {
+func GetSession(ctx context.Context, hostport, domain string) (Session, error) {
 	wsURL, err := browserWebSocketURL(ctx, hostport)
 	if err != nil {
 		return Session{}, err
@@ -69,12 +69,12 @@ func GetSession(ctx context.Context, hostport, website string) (Session, error) 
 
 	var pairs []string
 	for _, c := range cookies {
-		if domainMatches(c.Domain, website) {
+		if domainMatches(c.Domain, domain) {
 			pairs = append(pairs, c.Name+"="+c.Value)
 		}
 	}
 	if len(pairs) == 0 {
-		return Session{}, fmt.Errorf("no cookies for %v in chrome", website)
+		return Session{}, fmt.Errorf("no cookies for %v in chrome", domain)
 	}
 	return Session{Cookies: strings.Join(pairs, "; "), UserAgent: userAgent}, nil
 }
@@ -217,17 +217,17 @@ func call(ctx context.Context, conn *websocket.Conn, id int, method string, resu
 	}
 }
 
-// domainMatches reports whether a cookie with domain applies to website per
+// domainMatches reports whether a cookie with cookieDomain applies to domain per
 // RFC 6265: host-only cookies (no leading dot) require an exact match; domain
 // cookies (leading dot) match the domain itself and its subdomains.
-func domainMatches(domain, website string) bool {
-	site := strings.ToLower(strings.TrimPrefix(website, "."))
-	if domain == "" || site == "" {
+func domainMatches(cookieDomain, domain string) bool {
+	site := strings.ToLower(strings.TrimPrefix(domain, "."))
+	if cookieDomain == "" || site == "" {
 		return false
 	}
-	if strings.HasPrefix(domain, ".") {
-		host := strings.ToLower(strings.TrimPrefix(domain, "."))
+	if strings.HasPrefix(cookieDomain, ".") {
+		host := strings.ToLower(strings.TrimPrefix(cookieDomain, "."))
 		return host != "" && (site == host || strings.HasSuffix(site, "."+host))
 	}
-	return site == strings.ToLower(domain)
+	return site == strings.ToLower(cookieDomain)
 }

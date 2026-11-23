@@ -18,8 +18,8 @@ import (
 
 func TestDomainMatches(t *testing.T) {
 	for _, tc := range []struct {
-		domain, website string
-		want            bool
+		cookieDomain, domain string
+		want                 bool
 	}{
 		{"example.com", "example.com", true},          // host-only exact match
 		{"example.com", "app.example.com", false},     // host-only does not match subdomain
@@ -37,7 +37,7 @@ func TestDomainMatches(t *testing.T) {
 		{".", "example.com", false},
 		{"example.com", "", false},
 	} {
-		assert.Equal(t, tc.want, domainMatches(tc.domain, tc.website), "%q vs %q", tc.domain, tc.website)
+		assert.Equal(t, tc.want, domainMatches(tc.cookieDomain, tc.domain), "%q vs %q", tc.cookieDomain, tc.domain)
 	}
 }
 
