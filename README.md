@@ -1,11 +1,12 @@
 # gookies
 
-A golang library for reading cookies out of a running Chrome through the Chrome DevTools
-Protocol.
+A golang library for reading cookies and the user-agent out of a running Chrome through the
+Chrome DevTools Protocol.
 
 ```go
-cookies, err := gookies.GetCookies("http://127.0.0.1:9222", "example.com")
-// cookies is "name=value; name=value", ready for a Cookie header
+session, err := gookies.GetSession("http://127.0.0.1:9222", "example.com")
+// session.Cookies is "name=value; name=value", ready for a Cookie header
+// session.UserAgent is the User-Agent header Chrome sends
 ```
 
 It returns the cookies whose domain is the website, a subdomain of it or a parent domain of it.
@@ -27,5 +28,5 @@ Either of these works:
 
 ## Tests
 
-`make test` runs everything; `TestGetCookies_Works` needs Chrome in debug mode on port 9222
+`make test` runs everything; `TestGetSession_Works` needs Chrome in debug mode on port 9222
 with google.com cookies (and you to allow the connection).
