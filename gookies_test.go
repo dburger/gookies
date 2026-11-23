@@ -1,7 +1,6 @@
 package gookies
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,8 +13,7 @@ const website = "google.com"
 const invalidWebsite = "xgrooglex.com"
 
 func TestGetSession_Works(t *testing.T) {
-
-	if session, err := GetSession(context.Background(), hostport, website); err != nil {
+	if session, err := GetSession(t.Context(), hostport, website); err != nil {
 		assert.Nil(t, err, "Is you browser running in debug mode @ %v with a \"%v\" tab open?", hostport, website)
 	} else {
 		assert.Greater(t, len(session.Cookies), 0)
@@ -24,14 +22,14 @@ func TestGetSession_Works(t *testing.T) {
 }
 
 func TestGetSession_FailsNoChrome(t *testing.T) {
-	session, err := GetSession(context.Background(), invalidHostport, website)
+	session, err := GetSession(t.Context(), invalidHostport, website)
 	assert.NotNil(t, err)
 	assert.Emptyf(t, session.Cookies, "Expected cookies to be empty when an error is returned.")
 	assert.Empty(t, session.UserAgent, "Expected user agent to be empty when an error is returned.")
 }
 
 func TestGetSession_FailsNoWebsite(t *testing.T) {
-	session, err := GetSession(context.Background(), hostport, invalidWebsite)
+	session, err := GetSession(t.Context(), hostport, invalidWebsite)
 	assert.NotNil(t, err)
 	assert.Emptyf(t, session.Cookies, "Expected cookies to be empty when an error is returned.")
 	assert.Empty(t, session.UserAgent, "Expected user agent to be empty when an error is returned.")

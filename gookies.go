@@ -12,7 +12,7 @@
 //
 // Example usage:
 //
-//	session, err := gookies.GetSession(*chrome, *site)
+//	session, err := gookies.GetSession(ctx, *chrome, *site)
 //	if err != nil {
 //		log.Fatal(err)
 //	}
@@ -37,15 +37,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
-
-// timeout bounds a whole GetSession call, including the time you take to
-// allow the connection when Chrome asks.
-const timeout = time.Minute
 
 // profileDirs are the profile directories searched for DevToolsActivePort,
 // relative to the user config directory.

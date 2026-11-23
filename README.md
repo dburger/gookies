@@ -4,7 +4,7 @@ A golang library for reading cookies and the user-agent out of a running Chrome 
 Chrome DevTools Protocol.
 
 ```go
-session, err := gookies.GetSession("http://127.0.0.1:9222", "example.com")
+session, err := gookies.GetSession(ctx, "http://127.0.0.1:9222", "example.com")
 // session.Cookies is "name=value; name=value", ready for a Cookie header
 // session.UserAgent is the User-Agent header Chrome sends
 ```
