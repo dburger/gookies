@@ -1,6 +1,7 @@
 package gookies
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,18 +13,21 @@ const invalidHostport = "http://127.0.0.1:1222"
 const website = "google.com"
 const invalidWebsite = "xgrooglex.com"
 
+func runningAt() string {
+	return fmt.Sprintf("Is chrome running in debug mode at %s?", hostport)
+}
+
 func TestGetSession_Works(t *testing.T) {
-	if session, err := GetSession(t.Context(), hostport, website); err != nil {
-		assert.Nil(t, err, "Is you browser running in debug mode @ %v with a \"%v\" tab open?", hostport, website)
-	} else {
-		assert.Greater(t, len(session.Cookies), 0)
-		assert.Greater(t, len(session.UserAgent), 0)
-	}
+	session, err := GetSession(t.Context(), hostport, website)
+	assert.Nil(t, err, runningAt())
+	assert.Greater(t, len(session.Cookies), 0)
+	assert.Greater(t, len(session.UserAgent), 0)
 }
 
 func TestGetSession_FailsNoChrome(t *testing.T) {
 	session, err := GetSession(t.Context(), invalidHostport, website)
 	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "no chrome debugging at")
 	assert.Emptyf(t, session.Cookies, "Expected cookies to be empty when an error is returned.")
 	assert.Empty(t, session.UserAgent, "Expected user agent to be empty when an error is returned.")
 }
@@ -31,6 +35,7 @@ func TestGetSession_FailsNoChrome(t *testing.T) {
 func TestGetSession_FailsNoWebsite(t *testing.T) {
 	session, err := GetSession(t.Context(), hostport, invalidWebsite)
 	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "no cookies for")
 	assert.Emptyf(t, session.Cookies, "Expected cookies to be empty when an error is returned.")
 	assert.Empty(t, session.UserAgent, "Expected user agent to be empty when an error is returned.")
 }
