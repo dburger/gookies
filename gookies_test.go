@@ -13,13 +13,9 @@ const invalidHostport = "http://127.0.0.1:1222"
 const website = "google.com"
 const invalidWebsite = "xgrooglex.com"
 
-func runningAt() string {
-	return fmt.Sprintf("Is chrome running in debug mode at %s?", hostport)
-}
-
 func TestGetSession_Works(t *testing.T) {
 	session, err := GetSession(t.Context(), hostport, website)
-	assert.Nil(t, err, runningAt())
+	assert.Nil(t, err, fmt.Sprintf("Is chrome running in debug mode at %s?", hostport))
 	assert.Greater(t, len(session.Cookies), 0)
 	assert.Greater(t, len(session.UserAgent), 0)
 }
