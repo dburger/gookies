@@ -61,10 +61,7 @@ type Session struct {
 
 // GetSession returns the cookies for website and Chrome's User-Agent,
 // over a single connection (one prompt to allow it).
-func GetSession(hostport, website string) (Session, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
+func GetSession(ctx context.Context, hostport, website string) (Session, error) {
 	wsURL, err := browserWebSocketURL(ctx, hostport)
 	if err != nil {
 		return Session{}, err
