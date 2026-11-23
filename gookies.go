@@ -128,18 +128,23 @@ func browserWebSocketURL(ctx context.Context, hostport string) (string, error) {
 		return "", fmt.Errorf("bad hostport %q, want e.g. http://127.0.0.1:9222", hostport)
 	}
 
-	if wsURL, err := fromVersion(ctx, hostport); err == nil {
+	wsURL, versionErr := fromVersion(ctx, hostport)
+	if versionErr == nil {
 		return wsURL, nil
 	}
 
 	if isLoopbackHost(u.Hostname()) {
 		if path, ok := activePortPath(u.Port()); ok {
-			return "ws://" + u.Host + path, nil
+			wsScheme := "ws"
+			if u.Scheme == "https" {
+				wsScheme = "wss"
+			}
+			return wsScheme + "://" + u.Host + path, nil
 		}
 	}
 
-	return "", fmt.Errorf("no chrome debugging at %v: start chrome with --remote-debugging-port and "+
-		"--user-data-dir, or turn it on at chrome://inspect/#remote-debugging", hostport)
+	return "", fmt.Errorf("no chrome debugging at %v (%w): start chrome with --remote-debugging-port and "+
+		"--user-data-dir, or turn it on at chrome://inspect/#remote-debugging", hostport, versionErr)
 }
 
 func isLoopbackHost(host string) bool {

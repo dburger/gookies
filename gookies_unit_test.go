@@ -134,6 +134,26 @@ func TestBrowserWebSocketURL_RemoteSkipsActivePort(t *testing.T) {
 	assert.Contains(t, err.Error(), "no chrome debugging at")
 }
 
+func TestBrowserWebSocketURL_FallbackWSS(t *testing.T) {
+	config := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", config)
+	dir := filepath.Join(config, "google-chrome")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "DevToolsActivePort"),
+		[]byte("1222\n/devtools/browser/wss-id\n"), 0o644))
+
+	wsURL, err := browserWebSocketURL(t.Context(), "https://127.0.0.1:1222")
+	require.NoError(t, err)
+	assert.Equal(t, "wss://127.0.0.1:1222/devtools/browser/wss-id", wsURL)
+}
+
+func TestBrowserWebSocketURL_PreservesFromVersionError(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := browserWebSocketURL(ctx, "http://127.0.0.1:1222")
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestGetSession_BadURL(t *testing.T) {
 	for _, rawURL := range []string{"example.com", "ftp://example.com/", "https://", "://bad"} {
 		_, err := GetSession(t.Context(), "http://127.0.0.1:1222", rawURL)
