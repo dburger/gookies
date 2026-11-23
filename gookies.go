@@ -12,7 +12,7 @@
 //
 // Example usage:
 //
-//	session, err := gookies.GetSession(ctx, *chrome, *site)
+//	session, err := gookies.GetSession(ctx, *chrome, *url)
 //	if err != nil {
 //		log.Fatal(err)
 //	}
@@ -36,7 +36,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -54,9 +56,18 @@ type Session struct {
 	UserAgent string
 }
 
-// GetSession returns the cookies for domain and Chrome's User-Agent,
-// over a single connection (one prompt to allow it).
-func GetSession(ctx context.Context, hostport, domain string) (Session, error) {
+// GetSession returns the cookies for rawURL (per RFC 6265) and Chrome's
+// User-Agent, over a single connection (one prompt to allow it).
+func GetSession(ctx context.Context, hostport, rawURL string) (Session, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return Session{}, fmt.Errorf("bad url %q, want e.g. https://example.com/", rawURL)
+	}
+	reqPath := u.Path
+	if reqPath == "" {
+		reqPath = "/"
+	}
+
 	wsURL, err := browserWebSocketURL(ctx, hostport)
 	if err != nil {
 		return Session{}, err
@@ -67,14 +78,42 @@ func GetSession(ctx context.Context, hostport, domain string) (Session, error) {
 		return Session{}, err
 	}
 
-	var pairs []string
+	now := time.Now()
+	host := u.Hostname()
+	isHTTPS := u.Scheme == "https"
+	var matched []cookie
 	for _, c := range cookies {
-		if domainMatches(c.Domain, domain) {
-			pairs = append(pairs, c.Name+"="+c.Value)
+		if cookieMatches(c, host, reqPath, isHTTPS, now) {
+			matched = append(matched, c)
 		}
 	}
+	// Prefer more specific paths and host-only cookies when deduplicating names.
+	slices.SortStableFunc(matched, func(a, b cookie) int {
+		if len(a.Path) != len(b.Path) {
+			return len(b.Path) - len(a.Path)
+		}
+		aDomain := strings.HasPrefix(a.Domain, ".")
+		bDomain := strings.HasPrefix(b.Domain, ".")
+		if aDomain != bDomain {
+			if !aDomain {
+				return -1
+			}
+			return 1
+		}
+		return 0
+	})
+
+	seen := make(map[string]struct{}, len(matched))
+	var pairs []string
+	for _, c := range matched {
+		if _, ok := seen[c.Name]; ok {
+			continue
+		}
+		seen[c.Name] = struct{}{}
+		pairs = append(pairs, c.Name+"="+c.Value)
+	}
 	if len(pairs) == 0 {
-		return Session{}, fmt.Errorf("no cookies for %v in chrome", domain)
+		return Session{}, fmt.Errorf("no cookies for %v in chrome", rawURL)
 	}
 	return Session{Cookies: strings.Join(pairs, "; "), UserAgent: userAgent}, nil
 }
@@ -153,9 +192,12 @@ func activePortPath(port string) (string, bool) {
 }
 
 type cookie struct {
-	Name   string `json:"name"`
-	Value  string `json:"value"`
-	Domain string `json:"domain"`
+	Name    string  `json:"name"`
+	Value   string  `json:"value"`
+	Domain  string  `json:"domain"`
+	Path    string  `json:"path"`
+	Expires float64 `json:"expires"`
+	Secure  bool    `json:"secure"`
 }
 
 // fetch returns every cookie in the browser (Storage.getCookies) and its
@@ -215,6 +257,30 @@ func call(ctx context.Context, conn *websocket.Conn, id int, method string, resu
 		}
 		return nil
 	}
+}
+
+func cookieMatches(c cookie, host, reqPath string, isHTTPS bool, now time.Time) bool {
+	if c.Secure && !isHTTPS {
+		return false
+	}
+	if c.Expires > 0 && float64(now.UnixNano())/1e9 >= c.Expires {
+		return false
+	}
+	return domainMatches(c.Domain, host) && pathMatches(c.Path, reqPath)
+}
+
+// pathMatches reports whether reqPath matches cookiePath per RFC 6265 section 5.1.4.
+func pathMatches(cookiePath, reqPath string) bool {
+	if cookiePath == "" {
+		cookiePath = "/"
+	}
+	if reqPath == cookiePath {
+		return true
+	}
+	if !strings.HasPrefix(reqPath, cookiePath) {
+		return false
+	}
+	return strings.HasSuffix(cookiePath, "/") || reqPath[len(cookiePath)] == '/'
 }
 
 // domainMatches reports whether a cookie with cookieDomain applies to domain per

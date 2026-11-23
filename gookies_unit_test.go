@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -41,6 +42,45 @@ func TestDomainMatches(t *testing.T) {
 	}
 }
 
+func TestPathMatches(t *testing.T) {
+	for _, tc := range []struct {
+		cookiePath, reqPath string
+		want                bool
+	}{
+		{"/", "/", true},
+		{"/", "/api/v1", true},
+		{"", "/api", true},
+		{"/api", "/api", true},
+		{"/api", "/api/v1", true},
+		{"/api", "/apiv1", false},
+		{"/api/", "/api/v1", true},
+		{"/api/", "/api", false},
+	} {
+		assert.Equal(t, tc.want, pathMatches(tc.cookiePath, tc.reqPath), "%q vs %q", tc.cookiePath, tc.reqPath)
+	}
+}
+
+func TestCookieMatches(t *testing.T) {
+	now := time.Unix(1000, 0)
+	base := cookie{Name: "s", Value: "1", Domain: ".example.com", Path: "/api", Expires: -1}
+
+	assert.True(t, cookieMatches(base, "app.example.com", "/api/v1", false, now))
+	assert.False(t, cookieMatches(base, "app.example.com", "/other", false, now))
+
+	secure := base
+	secure.Secure = true
+	assert.True(t, cookieMatches(secure, "app.example.com", "/api", true, now))
+	assert.False(t, cookieMatches(secure, "app.example.com", "/api", false, now))
+
+	expired := base
+	expired.Expires = 999
+	assert.False(t, cookieMatches(expired, "app.example.com", "/api", true, now))
+
+	valid := base
+	valid.Expires = 1001
+	assert.True(t, cookieMatches(valid, "app.example.com", "/api", true, now))
+}
+
 func TestActivePortPath(t *testing.T) {
 	config := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", config)
@@ -62,8 +102,16 @@ func TestBrowserWebSocketURL_BadHostport(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestGetSession_BadURL(t *testing.T) {
+	for _, rawURL := range []string{"example.com", "ftp://example.com/", "https://", "://bad"} {
+		_, err := GetSession(t.Context(), "http://127.0.0.1:1222", rawURL)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "bad url")
+	}
+}
+
 func TestGetSession_FailsNoChrome(t *testing.T) {
-	session, err := GetSession(t.Context(), "http://127.0.0.1:1222", "google.com")
+	session, err := GetSession(t.Context(), "http://127.0.0.1:1222", "https://www.google.com/")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no chrome debugging at")
 	assert.Emptyf(t, session.Cookies, "Expected cookies to be empty when an error is returned.")
@@ -213,10 +261,12 @@ func TestGetSession_MockCDP(t *testing.T) {
 					_ = wsjson.Write(r.Context(), conn, map[string]any{
 						"id": req.ID,
 						"result": map[string]any{
-							"cookies": []map[string]string{
-								{"name": "a", "value": "1", "domain": ".example.com"},
-								{"name": "b", "value": "2", "domain": "app.example.com"},
-								{"name": "c", "value": "3", "domain": "other.com"},
+							"cookies": []map[string]any{
+								{"name": "a", "value": "1", "domain": ".example.com", "path": "/", "expires": -1, "secure": false},
+								{"name": "a", "value": "override", "domain": ".example.com", "path": "/api", "expires": -1, "secure": false},
+								{"name": "b", "value": "2", "domain": "app.example.com", "path": "/", "expires": -1, "secure": true},
+								{"name": "c", "value": "3", "domain": "other.com", "path": "/", "expires": -1, "secure": false},
+								{"name": "old", "value": "x", "domain": ".example.com", "path": "/", "expires": 1, "secure": false},
 							},
 						},
 					})
@@ -235,24 +285,28 @@ func TestGetSession_MockCDP(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	session, err := GetSession(t.Context(), srv.URL, "example.com")
+	session, err := GetSession(t.Context(), srv.URL, "https://example.com/")
 	require.NoError(t, err)
 	assert.Equal(t, "a=1", session.Cookies)
 	assert.Equal(t, "TestChrome/1.0", session.UserAgent)
 
-	session, err = GetSession(t.Context(), srv.URL, "app.example.com")
+	session, err = GetSession(t.Context(), srv.URL, "https://app.example.com/api")
 	require.NoError(t, err)
-	assert.Equal(t, "a=1; b=2", session.Cookies)
+	assert.Equal(t, "a=override; b=2", session.Cookies)
 	assert.Equal(t, "TestChrome/1.0", session.UserAgent)
 
-	session, err = GetSession(t.Context(), srv.URL, "missing.com")
+	session, err = GetSession(t.Context(), srv.URL, "http://app.example.com/api")
+	require.NoError(t, err)
+	assert.Equal(t, "a=override", session.Cookies)
+
+	session, err = GetSession(t.Context(), srv.URL, "https://missing.com/")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no cookies for missing.com")
+	assert.Contains(t, err.Error(), "no cookies for https://missing.com/")
 	assert.Empty(t, session)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err = GetSession(ctx, srv.URL, "example.com")
+	_, err = GetSession(ctx, srv.URL, "https://example.com/")
 	require.Error(t, err)
 	_, _, err = fetch(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/devtools/browser/mock")
 	require.ErrorIs(t, err, context.Canceled)
