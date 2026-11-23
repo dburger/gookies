@@ -203,7 +203,7 @@ func call(ctx context.Context, conn *websocket.Conn, id int, method string, resu
 	}
 	for {
 		var reply struct {
-			ID     int             `json:"id"`
+			ID     *int            `json:"id"`
 			Result json.RawMessage `json:"result"`
 			Error  *struct {
 				Message string `json:"message"`
@@ -212,7 +212,7 @@ func call(ctx context.Context, conn *websocket.Conn, id int, method string, resu
 		if err := wsjson.Read(ctx, conn, &reply); err != nil {
 			return fmt.Errorf("%v: %w", method, err)
 		}
-		if reply.ID != id {
+		if reply.ID == nil || *reply.ID != id {
 			continue
 		}
 		if reply.Error != nil {
