@@ -28,5 +28,6 @@ Either of these works:
 
 ## Tests
 
-`make test` runs everything; `TestGetSession_Works` needs Chrome in debug mode on port 9222
-with google.com cookies (and you to allow the connection).
+`make test` runs the unit tests; `make test-integration` (or `go test -tags=integration ./...`)
+runs the live-Chrome tests, which need Chrome in debug mode on port 9222 with google.com
+cookies (and you to allow the connection).
