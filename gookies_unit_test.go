@@ -102,6 +102,38 @@ func TestBrowserWebSocketURL_BadHostport(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestIsLoopbackHost(t *testing.T) {
+	for _, tc := range []struct {
+		host string
+		want bool
+	}{
+		{"127.0.0.1", true},
+		{"localhost", true},
+		{"LOCALHOST", true},
+		{"::1", true},
+		{"192.168.1.10", false},
+		{"example.com", false},
+		{"", false},
+	} {
+		assert.Equal(t, tc.want, isLoopbackHost(tc.host), "%q", tc.host)
+	}
+}
+
+func TestBrowserWebSocketURL_RemoteSkipsActivePort(t *testing.T) {
+	config := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", config)
+	dir := filepath.Join(config, "google-chrome")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "DevToolsActivePort"),
+		[]byte("9222\n/devtools/browser/local-only\n"), 0o644))
+
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	_, err := browserWebSocketURL(ctx, "http://192.0.2.1:9222")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no chrome debugging at")
+}
+
 func TestGetSession_BadURL(t *testing.T) {
 	for _, rawURL := range []string{"example.com", "ftp://example.com/", "https://", "://bad"} {
 		_, err := GetSession(t.Context(), "http://127.0.0.1:1222", rawURL)

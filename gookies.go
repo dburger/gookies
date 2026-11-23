@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -131,12 +132,22 @@ func browserWebSocketURL(ctx context.Context, hostport string) (string, error) {
 		return wsURL, nil
 	}
 
-	if path, ok := activePortPath(u.Port()); ok {
-		return "ws://" + u.Host + path, nil
+	if isLoopbackHost(u.Hostname()) {
+		if path, ok := activePortPath(u.Port()); ok {
+			return "ws://" + u.Host + path, nil
+		}
 	}
 
 	return "", fmt.Errorf("no chrome debugging at %v: start chrome with --remote-debugging-port and "+
 		"--user-data-dir, or turn it on at chrome://inspect/#remote-debugging", hostport)
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // fromVersion reads webSocketDebuggerUrl from /json/version.
