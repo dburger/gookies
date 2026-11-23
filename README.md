@@ -9,8 +9,8 @@ session, err := gookies.GetSession(ctx, "http://127.0.0.1:9222", "example.com")
 // session.UserAgent is the User-Agent header Chrome sends
 ```
 
-It returns the cookies whose domain is the website, a subdomain of it or a parent domain of it.
-No tab for the site needs to be open.
+It returns the cookies that apply to the website per RFC 6265 (exact host matches and
+parent domain cookies). No tab for the site needs to be open.
 
 ## Putting Chrome in debug mode
 

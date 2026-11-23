@@ -21,15 +21,21 @@ func TestDomainMatches(t *testing.T) {
 		domain, website string
 		want            bool
 	}{
-		{"example.com", "example.com", true},
-		{".example.com", "example.com", true},    // parent-domain cookie
-		{"app.example.com", "example.com", true}, // subdomain cookie
-		{".example.com", "app.example.com", true},
-		{"Example.com", "example.com", true},
+		{"example.com", "example.com", true},          // host-only exact match
+		{"example.com", "app.example.com", false},     // host-only does not match subdomain
+		{".example.com", "example.com", true},         // domain cookie matches apex
+		{".example.com", "app.example.com", true},     // domain cookie matches subdomain
+		{".example.com", "a.b.example.com", true},     // domain cookie matches nested subdomain
+		{"app.example.com", "example.com", false},     // subdomain cookie does not match parent
+		{".app.example.com", "example.com", false},    // subdomain domain cookie does not match parent
+		{"Example.com", "example.com", true},          // case-insensitive
 		{"notexample.com", "example.com", false},
+		{".notexample.com", "example.com", false},
 		{"example.com.evil.io", "example.com", false},
 		{"google.com", "example.com", false},
 		{"", "example.com", false},
+		{".", "example.com", false},
+		{"example.com", "", false},
 	} {
 		assert.Equal(t, tc.want, domainMatches(tc.domain, tc.website), "%q vs %q", tc.domain, tc.website)
 	}
@@ -230,6 +236,11 @@ func TestGetSession_MockCDP(t *testing.T) {
 	defer srv.Close()
 
 	session, err := GetSession(t.Context(), srv.URL, "example.com")
+	require.NoError(t, err)
+	assert.Equal(t, "a=1", session.Cookies)
+	assert.Equal(t, "TestChrome/1.0", session.UserAgent)
+
+	session, err = GetSession(t.Context(), srv.URL, "app.example.com")
 	require.NoError(t, err)
 	assert.Equal(t, "a=1; b=2", session.Cookies)
 	assert.Equal(t, "TestChrome/1.0", session.UserAgent)

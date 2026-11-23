@@ -217,13 +217,17 @@ func call(ctx context.Context, conn *websocket.Conn, id int, method string, resu
 	}
 }
 
-// domainMatches reports whether a cookie with domain belongs to website:
-// the same host, a subdomain of website, or a parent domain of website.
+// domainMatches reports whether a cookie with domain applies to website per
+// RFC 6265: host-only cookies (no leading dot) require an exact match; domain
+// cookies (leading dot) match the domain itself and its subdomains.
 func domainMatches(domain, website string) bool {
-	host := strings.ToLower(strings.TrimPrefix(domain, "."))
 	site := strings.ToLower(strings.TrimPrefix(website, "."))
-	if host == "" || site == "" {
+	if domain == "" || site == "" {
 		return false
 	}
-	return host == site || strings.HasSuffix(host, "."+site) || strings.HasSuffix(site, "."+host)
+	if strings.HasPrefix(domain, ".") {
+		host := strings.ToLower(strings.TrimPrefix(domain, "."))
+		return host != "" && (site == host || strings.HasSuffix(site, "."+host))
+	}
+	return site == strings.ToLower(domain)
 }
